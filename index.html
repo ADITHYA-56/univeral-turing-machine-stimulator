@@ -1,0 +1,574 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Universal Turing Machine Simulator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .tape-cell {
+            font-family: 'Roboto Mono', monospace;
+            min-width: 40px;
+            height: 40px;
+            transition: all 0.2s ease-in-out;
+            border-color: #d1d5db; /* gray-300 */
+        }
+        .head {
+            border-color: #3b82f6; /* blue-500 */
+            background-color: #dbeafe; /* blue-100 */
+            transform: scale(1.1);
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+        }
+        .head::after {
+            content: '▼';
+            position: absolute;
+            bottom: -20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: #3b82f6; /* blue-500 */
+            font-size: 1.2rem;
+        }
+        textarea {
+            font-family: 'Roboto Mono', monospace;
+        }
+        .btn-disabled {
+            background-color: #9ca3af; /* gray-400 */
+            cursor: not-allowed;
+        }
+        /* Diagram Styles */
+        .state-node circle {
+            transition: all 0.2s ease-in-out;
+        }
+        .state-node.active circle {
+            stroke: #ef4444; /* red-500 */
+            stroke-width: 4;
+            transform: scale(1.1);
+        }
+        .transition-path {
+            transition: all 0.2s ease-in-out;
+        }
+        .state-node.active + .transition-path {
+            stroke: #ef4444; /* red-500 */
+        }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-800">
+    <div class="container mx-auto p-4 md:p-8 max-w-7xl">
+        <header class="text-center mb-8">
+            <h1 class="text-4xl font-bold text-gray-900">Universal Turing Machine Simulator</h1>
+            <p class="text-lg text-gray-600 mt-2">Define and trace the execution of any Turing Machine.</p>
+        </header>
+
+        <main class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <!-- Configuration Panel -->
+            <div class="lg:col-span-1 bg-white p-6 rounded-lg shadow-md border border-gray-200">
+                <h2 class="text-2xl font-semibold mb-4 border-b pb-2">1. Configuration</h2>
+                
+                <div class="mb-4">
+                    <label for="tm-rules" class="block text-sm font-medium text-gray-700 mb-1">Transition Rules</label>
+                    <textarea id="tm-rules" rows="10" class="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm" placeholder="currentState,read -> newState,write,move&#10;q0,1 -> q0,1,R&#10;q0,_ -> q1,_,L"></textarea>
+                </div>
+
+                <div class="mb-4">
+                    <label for="tape-input" class="block text-sm font-medium text-gray-700 mb-1">Initial Tape</label>
+                    <input type="text" id="tape-input" class="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500" placeholder="1011">
+                </div>
+
+                <div class="grid grid-cols-2 gap-4 mb-4">
+                    <div>
+                        <label for="start-state" class="block text-sm font-medium text-gray-700 mb-1">Start State</label>
+                        <input type="text" id="start-state" value="q0" class="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">
+                    </div>
+                    <div>
+                         <label for="speed" class="block text-sm font-medium text-gray-700 mb-1">Speed (ms)</label>
+                        <input type="number" id="speed" value="250" min="10" max="2000" class="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">
+                    </div>
+                </div>
+                 <div class="mb-6">
+                    <label for="halt-states" class="block text-sm font-medium text-gray-700 mb-1">Halt States (comma-sep)</label>
+                    <input type="text" id="halt-states" value="q_accept,q_reject" class="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">
+                </div>
+
+                <div class="flex flex-col space-y-3">
+                     <button id="load-btn" class="w-full bg-blue-600 text-white font-bold py-2 px-4 rounded-md hover:bg-blue-700 transition-colors duration-200 shadow">Load Machine</button>
+                    <div class="grid grid-cols-2 gap-3">
+                        <button id="run-btn" class="w-full bg-green-600 text-white font-bold py-2 px-4 rounded-md hover:bg-green-700 transition-colors duration-200 shadow btn-disabled" disabled>Run</button>
+                        <button id="step-btn" class="w-full bg-yellow-500 text-white font-bold py-2 px-4 rounded-md hover:bg-yellow-600 transition-colors duration-200 shadow btn-disabled" disabled>Step</button>
+                    </div>
+                    <button id="reset-btn" class="w-full bg-red-600 text-white font-bold py-2 px-4 rounded-md hover:bg-red-700 transition-colors duration-200 shadow btn-disabled" disabled>Reset</button>
+                </div>
+            </div>
+
+            <!-- Simulation Panel -->
+            <div class="lg:col-span-2 bg-white p-6 rounded-lg shadow-md border border-gray-200">
+                <h2 class="text-2xl font-semibold mb-4 border-b pb-2">2. Execution Trace</h2>
+                
+                <!-- Status Display -->
+                <div id="status-display" class="mb-6 flex flex-wrap justify-between items-center bg-gray-100 p-4 rounded-lg border">
+                    <div><span class="font-semibold">State:</span> <span id="current-state" class="font-mono bg-gray-200 px-2 py-1 rounded">N/A</span></div>
+                    <div><span class="font-semibold">Steps:</span> <span id="steps-count" class="font-mono bg-gray-200 px-2 py-1 rounded">0</span></div>
+                    <div><span class="font-semibold">Status:</span> <span id="run-status" class="font-mono bg-gray-200 px-2 py-1 rounded">IDLE</span></div>
+                </div>
+                
+                <div class="grid grid-cols-1 xl:grid-cols-2 gap-6">
+                    <!-- Tape Visualization -->
+                    <div>
+                        <h3 class="text-lg font-semibold mb-3">Tape</h3>
+                        <div class="w-full overflow-x-auto pb-6">
+                            <div id="tape-container" class="flex justify-center items-start min-h-[60px]">
+                                <!-- Tape cells will be generated here -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Diagram Visualization -->
+                    <div>
+                        <h3 class="text-lg font-semibold mb-3">Transition Diagram</h3>
+                        <div id="diagram-container" class="w-full h-64 bg-gray-50 rounded-lg border flex items-center justify-center p-2">
+                             <p class="text-gray-500 text-center">Load a machine to see the diagram.</p>
+                        </div>
+                    </div>
+                </div>
+
+
+                <!-- Log Output -->
+                <h3 class="text-lg font-semibold mb-3 mt-4">Log</h3>
+                <div id="log-output" class="w-full h-48 bg-gray-900 text-white font-mono text-sm p-3 rounded-md overflow-y-auto">
+                    <p class="text-gray-400">Waiting for simulation to start...</p>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        // DOM Elements
+        const rulesInput = document.getElementById('tm-rules');
+        const tapeInput = document.getElementById('tape-input');
+        const startStateInput = document.getElementById('start-state');
+        const haltStatesInput = document.getElementById('halt-states');
+        const speedInput = document.getElementById('speed');
+
+        const loadBtn = document.getElementById('load-btn');
+        const runBtn = document.getElementById('run-btn');
+        const stepBtn = document.getElementById('step-btn');
+        const resetBtn = document.getElementById('reset-btn');
+
+        const tapeContainer = document.getElementById('tape-container');
+        const diagramContainer = document.getElementById('diagram-container');
+        const currentStateDisplay = document.getElementById('current-state');
+        const stepsCountDisplay = document.getElementById('steps-count');
+        const runStatusDisplay = document.getElementById('run-status');
+        const logOutput = document.getElementById('log-output');
+
+        // Simulator State
+        let tm = {
+            tape: [],
+            head: 0,
+            currentState: '',
+            startState: '',
+            haltStates: [],
+            transitions: new Map(),
+            steps: 0,
+            initialTape: '',
+            initialHead: 0,
+            isRunning: false,
+            simulationInterval: null,
+            maxSteps: 5000,
+        };
+        
+        // --- Event Listeners ---
+        loadBtn.addEventListener('click', loadMachine);
+        runBtn.addEventListener('click', runSimulation);
+        stepBtn.addEventListener('click', step);
+        resetBtn.addEventListener('click', resetSimulation);
+        
+        // Set default rules for demonstration
+        rulesInput.value = `q0,1 -> q0,1,R\nq0,0 -> q0,0,R\nq0,_ -> q1,_,L\nq1,1 -> q1,0,L\nq1,0 -> q_accept,1,L\nq1,_ -> q_accept,1,L`;
+        tapeInput.value = '1011';
+        
+        // --- Core Functions ---
+        
+        function logMessage(message, type = 'info') {
+            const p = document.createElement('p');
+            if (type === 'error') p.className = 'text-red-400';
+            else if (type === 'success') p.className = 'text-green-400';
+            else if (type === 'warn') p.className = 'text-yellow-400';
+            p.textContent = `[${tm.steps}] ${message}`;
+            logOutput.appendChild(p);
+            logOutput.scrollTop = logOutput.scrollHeight;
+        }
+
+        function parseRules(rulesText) {
+            const transitions = new Map();
+            const lines = rulesText.trim().split('\n');
+            for (const line of lines) {
+                if (line.trim().startsWith('#') || line.trim() === '') continue;
+                const parts = line.split('->');
+                if (parts.length !== 2) throw new Error(`Invalid rule format: ${line}`);
+                
+                const [left, right] = parts;
+                const [currentState, readSymbol] = left.split(',').map(s => s.trim());
+                const [newState, writeSymbol, move] = right.split(',').map(s => s.trim());
+                
+                if (!currentState || readSymbol === undefined || !newState || writeSymbol === undefined || !move) {
+                    throw new Error(`Incomplete rule: ${line}`);
+                }
+                if (!['L', 'R'].includes(move.toUpperCase())) {
+                    throw new Error(`Invalid move direction '${move}' in rule: ${line}`);
+                }
+                
+                const key = `${currentState},${readSymbol}`;
+                transitions.set(key, { currentState, readSymbol, newState, writeSymbol, move: move.toUpperCase() });
+            }
+            return transitions;
+        }
+
+        function loadMachine() {
+            try {
+                resetSimulation(true); 
+
+                tm.transitions = parseRules(rulesInput.value);
+                tm.startState = startStateInput.value.trim();
+                tm.haltStates = haltStatesInput.value.trim().split(',').map(s => s.trim()).filter(Boolean);
+                
+                if (!tm.startState) throw new Error("Start state cannot be empty.");
+                if (tm.haltStates.length === 0) throw new Error("At least one halt state must be defined.");
+                if (tm.transitions.size === 0) throw new Error("No transition rules defined.");
+
+                tm.initialTape = tapeInput.value.trim() === '' ? ['_'] : [...tapeInput.value];
+                tm.tape = [...tm.initialTape];
+                tm.head = 0;
+                tm.initialHead = 0;
+                tm.currentState = tm.startState;
+                tm.steps = 0;
+                
+                updateUI();
+                renderDiagram();
+                enableControls(true);
+                logOutput.innerHTML = '';
+                logMessage('Machine loaded successfully.', 'success');
+                runStatusDisplay.textContent = "READY";
+                runStatusDisplay.className = 'font-mono bg-green-200 px-2 py-1 rounded text-green-800';
+            } catch (error) {
+                logMessage(`Error loading machine: ${error.message}`, 'error');
+                runStatusDisplay.textContent = "LOAD ERROR";
+                runStatusDisplay.className = 'font-mono bg-red-200 px-2 py-1 rounded text-red-800';
+                enableControls(false);
+                diagramContainer.innerHTML = `<p class="text-red-500 text-center">Failed to load machine.</p>`;
+            }
+        }
+
+        function step() {
+            if (tm.haltStates.includes(tm.currentState)) {
+                logMessage(`Simulation halted in state: ${tm.currentState}`, 'success');
+                stopSimulation('HALTED');
+                return;
+            }
+            if (tm.steps >= tm.maxSteps) {
+                logMessage(`Max steps (${tm.maxSteps}) reached. Stopping simulation.`, 'warn');
+                stopSimulation('MAX STEPS');
+                return;
+            }
+
+            const currentSymbol = tm.tape[tm.head] || '_';
+            const ruleKey = `${tm.currentState},${currentSymbol}`;
+            const rule = tm.transitions.get(ruleKey);
+
+            if (!rule) {
+                logMessage(`No rule found for state '${tm.currentState}' and symbol '${currentSymbol}'. Halting.`, 'error');
+                stopSimulation('NO RULE');
+                return;
+            }
+
+            logMessage(`(${tm.currentState}, ${currentSymbol}) -> (${rule.newState}, ${rule.writeSymbol}, ${rule.move})`);
+            
+            tm.currentState = rule.newState;
+            tm.tape[tm.head] = rule.writeSymbol;
+
+            if (rule.move === 'R') {
+                tm.head++;
+                if (tm.head === tm.tape.length) tm.tape.push('_');
+            } else { // 'L'
+                if (tm.head === 0) tm.tape.unshift('_');
+                else tm.head--;
+            }
+            
+            tm.steps++;
+            updateUI();
+        }
+
+        function runSimulation() {
+            if (tm.isRunning) {
+                stopSimulation('PAUSED');
+            } else {
+                if (tm.haltStates.includes(tm.currentState)) {
+                    logMessage('Cannot run, already in a halt state.', 'warn');
+                    return;
+                }
+                tm.isRunning = true;
+                runBtn.textContent = 'Pause';
+                runBtn.classList.remove('bg-green-600', 'hover:bg-green-700');
+                runBtn.classList.add('bg-purple-600', 'hover:bg-purple-700');
+                stepBtn.disabled = true;
+                stepBtn.classList.add('btn-disabled');
+                loadBtn.disabled = true;
+                loadBtn.classList.add('btn-disabled');
+                runStatusDisplay.textContent = "RUNNING";
+                runStatusDisplay.className = 'font-mono bg-blue-200 px-2 py-1 rounded text-blue-800';
+
+                const speed = parseInt(speedInput.value, 10);
+                tm.simulationInterval = setInterval(step, Math.max(10, speed));
+            }
+        }
+        
+        function stopSimulation(status = 'PAUSED') {
+            tm.isRunning = false;
+            clearInterval(tm.simulationInterval);
+            tm.simulationInterval = null;
+            
+            runBtn.textContent = 'Run';
+            runBtn.classList.remove('bg-purple-600', 'hover:bg-purple-700');
+            runBtn.classList.add('bg-green-600', 'hover:bg-green-700');
+            stepBtn.disabled = false;
+            stepBtn.classList.remove('btn-disabled');
+            loadBtn.disabled = false;
+            loadBtn.classList.remove('btn-disabled');
+
+            runStatusDisplay.textContent = status;
+            if (status === 'HALTED') {
+                runStatusDisplay.className = 'font-mono bg-green-200 px-2 py-1 rounded text-green-800';
+                 runBtn.disabled = true;
+                 runBtn.classList.add('btn-disabled');
+                 stepBtn.disabled = true;
+                 stepBtn.classList.add('btn-disabled');
+            } else if (status.includes('ERROR') || status === 'NO RULE' || status === 'MAX STEPS'){
+                 runStatusDisplay.className = 'font-mono bg-red-200 px-2 py-1 rounded text-red-800';
+            } else {
+                 runStatusDisplay.className = 'font-mono bg-yellow-200 px-2 py-1 rounded text-yellow-800';
+            }
+        }
+
+        function resetSimulation(isLoading = false) {
+             stopSimulation('IDLE');
+             tm.tape = [...tm.initialTape];
+             tm.head = tm.initialHead;
+             tm.currentState = tm.startState;
+             tm.steps = 0;
+             updateUI();
+             logOutput.innerHTML = '';
+             logMessage('Simulation reset to initial state.');
+             if (!isLoading) {
+                 enableControls(true);
+                 renderDiagram(); // Re-render diagram on reset
+             }
+        }
+
+        // --- UI Functions ---
+        function updateUI() {
+            renderTape();
+            updateDiagramHighlight();
+            currentStateDisplay.textContent = tm.currentState;
+            stepsCountDisplay.textContent = tm.steps;
+        }
+
+        function renderTape() {
+            tapeContainer.innerHTML = '';
+            const PADDING = 15;
+            let start = Math.max(0, tm.head - PADDING);
+            let end = Math.min(tm.tape.length, tm.head + PADDING);
+
+            for (let i = start; i < end; i++) {
+                const cell = document.createElement('div');
+                cell.className = 'relative flex items-center justify-center p-2 border tape-cell rounded-md bg-white shadow-sm';
+                cell.textContent = tm.tape[i] || '_';
+                if (i === tm.head) {
+                    cell.classList.add('head');
+                }
+                tapeContainer.appendChild(cell);
+            }
+        }
+        
+        function enableControls(isEnabled) {
+            runBtn.disabled = !isEnabled;
+            stepBtn.disabled = !isEnabled;
+            resetBtn.disabled = !isEnabled;
+            
+            [runBtn, stepBtn, resetBtn].forEach(btn => {
+                if(isEnabled) btn.classList.remove('btn-disabled');
+                else btn.classList.add('btn-disabled');
+            });
+        }
+
+        // --- Diagram Functions ---
+        const SVG_NS = "http://www.w3.org/2000/svg";
+
+        function renderDiagram() {
+            diagramContainer.innerHTML = '';
+            const states = new Set();
+            tm.transitions.forEach(rule => {
+                states.add(rule.currentState);
+                states.add(rule.newState);
+            });
+
+            if (states.size === 0) {
+                 diagramContainer.innerHTML = `<p class="text-gray-500 text-center">No states found in rules.</p>`;
+                 return;
+            }
+
+            const stateArr = Array.from(states);
+            const stateCoords = new Map();
+            
+            const svg = document.createElementNS(SVG_NS, 'svg');
+            const width = diagramContainer.clientWidth;
+            const height = diagramContainer.clientHeight;
+            svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+            svg.setAttribute('width', '100%');
+            svg.setAttribute('height', '100%');
+            
+            const centerX = width / 2;
+            const centerY = height / 2;
+            const radius = Math.min(width, height) / 2 - 40;
+            const nodeRadius = 20;
+
+            // Define arrowhead marker
+            const defs = document.createElementNS(SVG_NS, 'defs');
+            const marker = document.createElementNS(SVG_NS, 'marker');
+            marker.setAttribute('id', 'arrowhead');
+            marker.setAttribute('viewBox', '0 -5 10 10');
+            marker.setAttribute('refX', 10);
+            marker.setAttribute('refY', 0);
+            marker.setAttribute('markerWidth', 6);
+            marker.setAttribute('markerHeight', 6);
+            marker.setAttribute('orient', 'auto');
+            const path = document.createElementNS(SVG_NS, 'path');
+            path.setAttribute('d', 'M0,-5L10,0L0,5');
+            path.setAttribute('fill', '#6b7280'); // gray-500
+            marker.appendChild(path);
+            defs.appendChild(marker);
+            svg.appendChild(defs);
+
+            // Calculate state positions
+            stateArr.forEach((state, i) => {
+                const angle = (i / stateArr.length) * 2 * Math.PI;
+                const x = centerX + radius * Math.cos(angle);
+                const y = centerY + radius * Math.sin(angle);
+                stateCoords.set(state, { x, y });
+            });
+            
+            // Group transitions by source and target
+            const transitionsByPair = new Map();
+            tm.transitions.forEach(rule => {
+                const key = `${rule.currentState}->${rule.newState}`;
+                if (!transitionsByPair.has(key)) transitionsByPair.set(key, []);
+                transitionsByPair.get(key).push(`${rule.readSymbol} → ${rule.writeSymbol}, ${rule.move}`);
+            });
+
+            // Draw transitions
+            transitionsByPair.forEach((labels, key) => {
+                const [source, target] = key.split('->');
+                const startPos = stateCoords.get(source);
+                const endPos = stateCoords.get(target);
+                
+                const edge = document.createElementNS(SVG_NS, 'path');
+                let pathData;
+                const textPos = {x: 0, y: 0};
+                
+                if (source === target) { // Self-loop
+                    const x1 = startPos.x + nodeRadius * Math.cos(Math.PI / 4);
+                    const y1 = startPos.y - nodeRadius * Math.sin(Math.PI / 4);
+                    const c1x = startPos.x + 40; const c1y = startPos.y - 40;
+                    const c2x = startPos.x + 40; const c2y = startPos.y + 40;
+                    const x2 = startPos.x + nodeRadius * Math.cos(-Math.PI / 4);
+                    const y2 = startPos.y - nodeRadius * Math.sin(-Math.PI / 4);
+                    pathData = `M ${x1} ${y1} C ${c1x} ${c1y}, ${c2x} ${c2y}, ${x2} ${y2}`;
+                    textPos.x = startPos.x + 35; textPos.y = startPos.y;
+                } else {
+                    const dx = endPos.x - startPos.x;
+                    const dy = endPos.y - startPos.y;
+                    const dist = Math.sqrt(dx*dx + dy*dy);
+                    const normDx = dx / dist; const normDy = dy / dist;
+                    const x1 = startPos.x + normDx * nodeRadius;
+                    const y1 = startPos.y + normDy * nodeRadius;
+                    const x2 = endPos.x - normDx * (nodeRadius + 5); // +5 for arrowhead
+                    const y2 = endPos.y - normDy * (nodeRadius + 5);
+                    pathData = `M ${x1} ${y1} L ${x2} ${y2}`;
+                    textPos.x = (startPos.x + endPos.x) / 2 - normDy * 10; // Offset perpendicular
+                    textPos.y = (startPos.y + endPos.y) / 2 + normDx * 10;
+                }
+                
+                edge.setAttribute('d', pathData);
+                edge.setAttribute('stroke', '#9ca3af'); // gray-400
+                edge.setAttribute('stroke-width', '2');
+                edge.setAttribute('fill', 'none');
+                edge.setAttribute('marker-end', 'url(#arrowhead)');
+                svg.appendChild(edge);
+
+                const text = document.createElementNS(SVG_NS, 'text');
+                text.setAttribute('x', textPos.x);
+                text.setAttribute('y', textPos.y);
+                text.setAttribute('text-anchor', 'middle');
+                text.setAttribute('font-size', '10');
+                text.setAttribute('fill', '#4b5563'); // gray-600
+                text.textContent = labels.join(', ');
+                svg.appendChild(text);
+            });
+
+
+            // Draw states (nodes) on top
+            stateArr.forEach(state => {
+                const pos = stateCoords.get(state);
+                const g = document.createElementNS(SVG_NS, 'g');
+                g.setAttribute('class', 'state-node');
+                g.setAttribute('id', `state-node-${state}`);
+
+                const circle = document.createElementNS(SVG_NS, 'circle');
+                circle.setAttribute('cx', pos.x);
+                circle.setAttribute('cy', pos.y);
+                circle.setAttribute('r', nodeRadius);
+                
+                let strokeColor = '#6b7280'; // gray-500
+                if (tm.startState === state) strokeColor = '#2563eb'; // blue-600
+                
+                circle.setAttribute('stroke', strokeColor);
+                circle.setAttribute('stroke-width', tm.startState === state ? '3' : '2');
+                circle.setAttribute('fill', 'white');
+                
+                if (tm.haltStates.includes(state)) {
+                    circle.setAttribute('stroke-dasharray', '4');
+                    circle.setAttribute('stroke', '#16a34a'); // green-600
+                }
+                
+                g.appendChild(circle);
+
+                const text = document.createElementNS(SVG_NS, 'text');
+                text.setAttribute('x', pos.x);
+                text.setAttribute('y', pos.y + 5);
+                text.setAttribute('text-anchor', 'middle');
+                text.setAttribute('fill', '#1f2937'); // gray-800
+                text.setAttribute('font-weight', '500');
+                text.textContent = state;
+                g.appendChild(text);
+
+                svg.appendChild(g);
+            });
+
+            diagramContainer.appendChild(svg);
+        }
+
+        function updateDiagramHighlight() {
+            document.querySelectorAll('.state-node').forEach(node => {
+                node.classList.remove('active');
+            });
+            const currentNode = document.getElementById(`state-node-${tm.currentState}`);
+            if (currentNode) {
+                currentNode.classList.add('active');
+            }
+        }
+    </script>
+</body>
+</html>
+
